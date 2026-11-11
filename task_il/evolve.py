@@ -10,8 +10,8 @@ import copy
 
 def run_evolve():
     params = {}
-    params['pop_size'] = 2    # Population size
-    params['max_gen'] = 3    # Maximum number of iteration generations
+    params['pop_size'] = 10    # Population size
+    params['max_gen'] = 20    # Maximum number of iteration generations
     evoCNN = EvolveCNN(params)
     evoCNN.do_work(params)
 
@@ -110,7 +110,7 @@ class EvolveCNN(object):
         Log.info('EVOLVE[%d-gen]-Finish the evaluation'%(gen_no))
         gen_no += 1
         self.pops.gen_no += 1
-        for curr_gen in range(gen_no, max_gen):
+        for curr_gen in range(gen_no, max_gen + 1):
             self.params['gen_no'] = curr_gen
             #step 3
             Log.info('EVOLVE[%d-gen]-Begin to crossover and mutation'%(curr_gen))
@@ -124,8 +124,8 @@ class EvolveCNN(object):
             self.environment_selection()
             Log.info('EVOLVE[%d-gen]-Finish the environment selection'%(curr_gen))
 
-        self.params['gen_no'] = max_gen
-        self.generate_offspring()
+        best = max(self.pops.individuals, key=lambda individual: individual.acc)
+        Log.info('Best architecture: %s' % best)
 
         StatusUpdateTool.end_evolution()
 

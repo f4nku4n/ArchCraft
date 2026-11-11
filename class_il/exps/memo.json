@@ -14,7 +14,7 @@
     "debug": false,
     "skip": false,
     "device": ["0", "1", "2", "3"],
-    "seed":[1993],
+    "seed":[1993, 1994, 1995, 1996, 1997],
     "scheduler": "steplr",
     "init_epoch": 200,
     "t_max": null,

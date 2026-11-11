@@ -164,7 +164,7 @@ class Utils(object):
 
     @classmethod
     def load_cache_data(cls):
-        file_name = './populations/cache.txt'
+        file_name = './populations/cache_five_seed.txt'
         _map = {}
         if os.path.exists(file_name):
             f = open(file_name, 'r')
@@ -182,7 +182,7 @@ class Utils(object):
             _acc = indi.acc
             if _key not in _map:
                 Log.info('Add record into cache, id:%s, acc:%.5f' % (_key, _acc))
-                f = open('./populations/cache.txt', 'a+')
+                f = open('./populations/cache_five_seed.txt', 'a+')
                 _str = '%s;%.5f;%s\n' % (_key, _acc, _str)
                 f.write(_str)
                 f.close()

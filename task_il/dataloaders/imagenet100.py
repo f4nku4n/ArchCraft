@@ -1,29 +1,39 @@
-import os,sys
+from hashlib import sha256
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import numpy as np
 import torch
 import utils
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
 
-def get(seed=0,pc_valid=0, inc=5):
+def get(seed=0, pc_valid=0, inc=5, data_root=None):
     assert 100%inc == 0
     task_num=100//inc
     data={}
     taskcla=[]
     size=[3,32,32]
 
-    if not os.path.isdir('./dat/binary_imagenet_inc%d/' %inc):
-        os.makedirs('./dat/binary_imagenet_inc%d/' %inc)
+    if data_root is None:
+        raise ValueError('Specify the ImageNet-100 root containing train/ and val/.')
+    root = Path(data_root).expanduser().resolve()
+    transform = transforms.Compose([
+        transforms.Resize([32, 32]),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    dat = {
+        'train': datasets.ImageFolder(root / 'train', transform=transform),
+        'test': datasets.ImageFolder(root / 'val', transform=transform),
+    }
+    if len(dat['train'].classes) != 100 or dat['train'].classes != dat['test'].classes:
+        raise ValueError('ImageNet-100 train/ and val/ must contain the same 100 classes.')
 
-        trsf = transforms.Compose([
-            transforms.Resize([32,32]),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
-        dat={}
-        assert 0, "You should specify the folder of your dataset"
-        dat['train'] = datasets.ImageFolder('/path/to/Imagenet/train', transform=trsf)
-        dat['test'] = datasets.ImageFolder('/path/to/Imagenet/val', transform=trsf)
+    subset_id = sha256(repr((root, dat['train'].classes)).encode()).hexdigest()[:16]
+    cache_dir = Path('dat') / f'binary_imagenet_{subset_id}_inc{inc}'
+    ready = cache_dir / '.complete'
+    if not ready.is_file():
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
         for n in range(task_num):
             data[n]={}
@@ -35,19 +45,22 @@ def get(seed=0,pc_valid=0, inc=5):
             loader=torch.utils.data.DataLoader(dat[s],batch_size=1,shuffle=False)
             for image,target in loader:
                 n=target.numpy()[0]
-                if n >= 100:
-                    continue
                 nn=(n//inc)
                 data[nn][s]['x'].append(image)
                 data[nn][s]['y'].append(n%inc)
 
-        # "Unify" and save
-        for t in data.keys():
-            for s in ['train','test']:
-                data[t][s]['x']=torch.stack(data[t][s]['x']).view(-1,size[0],size[1],size[2])
-                data[t][s]['y']=torch.LongTensor(np.array(data[t][s]['y'],dtype=int)).view(-1)
-                torch.save(data[t][s]['x'], os.path.join(os.path.expanduser('./dat/binary_imagenet_inc%d/' %inc),'data'+str(t)+s+'x.bin'))
-                torch.save(data[t][s]['y'], os.path.join(os.path.expanduser('./dat/binary_imagenet_inc%d/' %inc),'data'+str(t)+s+'y.bin'))
+        with TemporaryDirectory(dir=cache_dir) as staging:
+            staging_dir = Path(staging)
+            for t in data:
+                for split in ('train', 'test'):
+                    images = torch.stack(data[t][split]['x']).view(-1, *size)
+                    labels = torch.tensor(data[t][split]['y'], dtype=torch.long)
+                    torch.save(images, staging_dir / f'data{t}{split}x.bin')
+                    torch.save(labels, staging_dir / f'data{t}{split}y.bin')
+            for file in staging_dir.iterdir():
+                file.replace(cache_dir / file.name)
+
+        ready.touch()
 
     # Load binary files
     data={}
@@ -57,8 +70,8 @@ def get(seed=0,pc_valid=0, inc=5):
         data[i] = dict.fromkeys(['name','ncla','train','test'])
         for s in ['train','test']:
             data[i][s]={'x':[],'y':[]}
-            data[i][s]['x']=torch.load(os.path.join(os.path.expanduser('./dat/binary_imagenet_inc%d/' %inc),'data'+str(ids[i])+s+'x.bin'))
-            data[i][s]['y']=torch.load(os.path.join(os.path.expanduser('./dat/binary_imagenet_inc%d/' %inc),'data'+str(ids[i])+s+'y.bin'))
+            data[i][s]['x']=torch.load(cache_dir / f'data{ids[i]}{s}x.bin')
+            data[i][s]['y']=torch.load(cache_dir / f'data{ids[i]}{s}y.bin')
         data[i]['ncla'] = len(np.unique(data[i]['train']['y'].numpy()))
         data[i]['name']=str(ids[i])
 

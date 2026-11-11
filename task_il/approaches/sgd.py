@@ -1,19 +1,23 @@
+import random
 import sys,time
 import numpy as np
 import torch
 
 import utils
 
+DEFAULT_SEEDS = (1993, 1994, 1995, 1996, 1997)
+
+
 class Appr(object):
 
-    def __init__(self,model,nepochs=20,sbatch=128,lr=0.01,clipgrad=10):
+    def __init__(self,model,nepochs=20,sbatch=128,lr=0.01,clipgrad=10, seed=1):
         self.model=model
 
         self.nepochs=nepochs
         self.sbatch=sbatch
         self.lr=lr
         self.clipgrad=clipgrad
-        _set_random()
+        set_random(seed)
 
         self.criterion=torch.nn.CrossEntropyLoss()
         self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr, momentum=0.9, weight_decay=2e-4)
@@ -101,11 +105,11 @@ class Appr(object):
 
         return total_loss/total_num,total_acc/total_num
 
-def _set_random():
-    torch.manual_seed(1)
-    torch.cuda.manual_seed(1)
-    torch.cuda.manual_seed_all(1)
-    np.random.seed(1)
+def set_random(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     

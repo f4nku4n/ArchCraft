@@ -5,7 +5,6 @@ import sys
 from datetime import datetime
 import multiprocessing
 import numpy as np
-import torch.backends.cudnn as cudnn
 import dataloaders.cifar100 as dataloader
 from networks.arch_craft import Net
 from model_code import init_code
@@ -33,7 +32,7 @@ class TrainModel(object):
             file_mode = 'w'
         else:
             file_mode = 'a+'
-        f = open('./log/%s.txt'%(self.file_id), file_mode)
+        f = open('./log/%s.txt'%(self.file_id), file_mode, encoding='utf-8')
         f.write('[%s]-%s\n'%(dt, _str))
         f.flush()
         f.close()
@@ -44,13 +43,13 @@ class TrainModel(object):
         pool_code = copy.deepcopy(self.code[2])
         double_code = copy.deepcopy(self.code[3])
         data, taskcla, inputsize=dataloader.get(seed=s,pc_valid=0,inc=self.inc)
+        approach.set_random(s)
         net = Net(taskcla, depth, width, pool_code, double_code)
-        cudnn.benchmark = True
         net = net.cuda()
         total = sum([param.nelement() for param in net.parameters()])
         self.log_record('Number of parameter: %.4fM' % (total / 1e6))
 
-        appr = approach.Appr(net, nepochs=self.epoch, sbatch=128, lr=self.lr, clipgrad=self.grad_clip)
+        appr = approach.Appr(net, nepochs=self.epoch, sbatch=128, lr=self.lr, clipgrad=self.grad_clip, seed=s)
         self.log_record('-' * 100)
 
         # Loop tasks
@@ -127,7 +126,7 @@ class TrainModel(object):
         self.log_record('aa:%.3f' % final_acc)
         self.log_record('af:%.3f' % af)
         self.log_record('Done!')
-        return round(aia, 3)
+        return aia
 
 class RunModel(object):
     def do_work(self, gpu_id, file_id):
@@ -136,9 +135,12 @@ class RunModel(object):
         m = TrainModel()
         try:
             m.log_record('Used GPU#%s, worker name:%s[%d]'%(gpu_id, multiprocessing.current_process().name, os.getpid()), first_time=True)
-            best_acc = m.process(s=0)
-            #import random
-            #best_acc = random.random()
+            scores = []
+            for seed in approach.DEFAULT_SEEDS:
+                m.log_record(f'Seed: {seed}')
+                scores.append(m.process(seed))
+            best_acc = float(np.mean(scores))
+            m.log_record(f'AIA over {len(scores)} runs: {best_acc:.3f} ± {np.std(scores):.3f}%')
         except BaseException as e:
             print('Exception occurs, file:%s, pid:%d...%s'%(file_id, os.getpid(), str(e)))
             m.log_record('Exception occur:%s'%(str(e)))

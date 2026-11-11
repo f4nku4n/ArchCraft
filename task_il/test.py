@@ -1,61 +1,71 @@
 from __future__ import print_function
+import argparse
 import os
-import sys 
 import numpy as np
-import torch.backends.cudnn as cudnn
-import dataloaders.cifar100 as dataloader
+from dataloaders import cifar100, imagenet100
 from approaches import sgd as approach
 import utils
 import copy
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-Inc_cls = 5    # Number of classes incremented at each step
+ARCHITECTURES = {
+    'alexac-a': [2, 40, [1, 1, 2, 2, 2], [0, 0, 0, 1, 2]],
+    'alexac-b': [2, 32, [1, 1, 2, 2, 2], [0, 1, 2, 2, 2]],
+    'alexnet': None,
+}
 
 def run_test():
-    indi_no = 0
-    code=[2, 40, [1, 1, 2, 2, 2], [0, 0, 0, 1, 2]]    # AlexAC-A, about 6.28M
-    #code=[2, 32, [1, 1, 2, 2, 2], [0, 1, 2, 2, 2]]    # AlexAC-B, about 0.92M
-    network_choices = ['arch_craft', 'alexnet']
-    chosen_network = network_choices[0]
-    m = TrainModel(code=code, indi_no=indi_no, network_name=chosen_network)
-    m.process(1993)
-    
-    return
+    parser = argparse.ArgumentParser(description='Evaluate Task IL on CIFAR-100 or ImageNet-100.')
+    parser.add_argument('--dataset', choices=['cifar100', 'imagenet100'], default='cifar100')
+    parser.add_argument('--data-root', help='ImageNet-100 folder containing train/ and val/')
+    parser.add_argument('--increment', type=int, choices=[5, 10], default=5)
+    parser.add_argument('--architecture', choices=ARCHITECTURES, default='alexac-a')
+    parser.add_argument('--seeds', type=int, nargs='+', default=approach.DEFAULT_SEEDS)
+    parser.add_argument('--gpu', default='0')
+    args = parser.parse_args()
+    if args.dataset == 'imagenet100' and not args.data_root:
+        parser.error('--data-root is required for ImageNet-100')
+
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    model = TrainModel(ARCHITECTURES[args.architecture], args.increment, args.dataset, args.data_root)
+    results = []
+    for seed in args.seeds:
+        la, aia = model.process(seed)
+        results.append((la, aia))
+        print(f'Seed {seed}: LA={la:.3f}%, AIA={aia:.3f}%')
+
+    for metric, values in zip(('LA', 'AIA'), np.asarray(results).T):
+        print(f'{metric} over {len(values)} runs: {np.mean(values):.3f} ± {np.std(values):.3f}%')
 
 class TrainModel(object):
-    def __init__(self, code, indi_no, network_name):
+    def __init__(self, code, increment, dataset, data_root):
         self.grad_clip = 10
         self.epoch = 20
         self.lr = 0.01
         self.code = code
-        self.file_id = 'indiH%03d' % indi_no
-        self.inc = Inc_cls
-        self.network_name = network_name
+        self.inc = increment
+        self.dataset = dataset
+        self.data_root = data_root
 
     def process(self, s):
         print('\n\n')
-        print(self.file_id)
-        depth = self.code[0]
-        width = self.code[1]
-        pool_code = copy.deepcopy(self.code[2])
-        double_code = copy.deepcopy(self.code[3])
-        print(self.code)
-        data, taskcla, inputsize=dataloader.get(seed=s,pc_valid=0,inc=self.inc)
+        print(f'Dataset: {self.dataset}, increment: {self.inc}, seed: {s}')
+        if self.dataset == 'imagenet100':
+            data, taskcla, _ = imagenet100.get(seed=s, inc=self.inc, data_root=self.data_root)
+        else:
+            data, taskcla, _ = cifar100.get(seed=s, inc=self.inc)
 
-        if self.network_name == 'arch_craft':
-            from networks.arch_craft import Net
-            net = Net(taskcla, depth, width, pool_code, double_code)
-        elif self.network_name == 'alexnet':
+        approach.set_random(s)
+        if self.code is None:
             from networks.alexnet import Net
             net = Net(taskcla)
         else:
-            raise NotImplementedError("Unknown type {}".format(self.network_name))
+            from networks.arch_craft import Net
+            net = Net(taskcla, *copy.deepcopy(self.code))
 
-        cudnn.benchmark = True
         net = net.cuda()
         total = sum([param.nelement() for param in net.parameters()])
         print('Number of parameter: %.4fM' % (total / 1e6))
-        appr = approach.Appr(net, nepochs=self.epoch, sbatch=128, lr=self.lr, clipgrad=self.grad_clip)
+        appr = approach.Appr(net, nepochs=self.epoch, sbatch=128, lr=self.lr, clipgrad=self.grad_clip, seed=s)
         print(appr.criterion)
         utils.print_optimizer_config(appr.optimizer)
         print('-' * 100)
@@ -137,7 +147,7 @@ class TrainModel(object):
         round(final_acc, 5)
         print('final_acc:%.5f' % final_acc)
         print('Done!')
-        return final_acc
+        return final_acc * 100, aia * 100
 
 if __name__ == '__main__':
     run_test()

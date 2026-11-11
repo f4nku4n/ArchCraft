@@ -166,7 +166,7 @@ class Utils(object):
 
     @classmethod
     def load_cache_data(cls):
-        file_name = './populations/cache.txt'
+        file_name = './populations/cache_five_seed.txt'
         _map = {}
         if os.path.exists(file_name):
             f = open(file_name, 'r')
@@ -184,7 +184,7 @@ class Utils(object):
             _acc = indi.acc
             if _key not in _map:
                 Log.info('Add record into cache, id:%s, acc:%.5f' % (_key, _acc))
-                f = open('./populations/cache.txt', 'a+')
+                f = open('./populations/cache_five_seed.txt', 'a+')
                 _str = '%s;%.5f;%s\n' % (_key, _acc, _str)
                 f.write(_str)
                 f.close()
@@ -270,7 +270,7 @@ class Utils(object):
         part1 = []
         part2 = []
 
-        f = open(_path)
+        f = open(_path, encoding='utf-8')
         f.readline()  # skip this comment
         line = f.readline().rstrip()
         while line.strip() != '#generated_code':
@@ -300,7 +300,7 @@ class Utils(object):
         _str.extend(part2)
         # print('\n'.join(_str))
         file_name = 'scripts/%s.py' % (indi.id)
-        script_file_handler = open(file_name, 'w')
+        script_file_handler = open(file_name, 'w', encoding='utf-8')
         script_file_handler.write('\n'.join(_str))
         script_file_handler.flush()
         script_file_handler.close()

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 from torchvision import datasets, transforms
 from utils.toolkit import split_images_labels
@@ -111,15 +113,18 @@ class iImageNet100(iData):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]
 
-    class_order = np.arange(1000).tolist()
+    class_order = list(range(100))
+
+    def __init__(self, data_root):
+        if data_root is None:
+            raise ValueError('Specify data_root for ImageNet-100, containing train/ and val/.')
+        self.root = Path(data_root).expanduser()
 
     def download_data(self):
-        #assert 0, "You should specify the folder of your dataset"
-        train_dir = "/home/xiaotian/dataset/Imagenet/train/"
-        test_dir = "/home/xiaotian/dataset/Imagenet/val/"
-
-        train_dset = datasets.ImageFolder(train_dir)
-        test_dset = datasets.ImageFolder(test_dir)
+        train_dset = datasets.ImageFolder(self.root / 'train')
+        test_dset = datasets.ImageFolder(self.root / 'val')
+        if len(train_dset.classes) != 100 or train_dset.classes != test_dset.classes:
+            raise ValueError('ImageNet-100 train/ and val/ must contain the same 100 classes.')
 
         self.train_data, self.train_targets = split_images_labels(train_dset.imgs)
         self.test_data, self.test_targets = split_images_labels(test_dset.imgs)

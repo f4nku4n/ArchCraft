@@ -10,5 +10,5 @@
     "model_name": "replay",
     "convnet_type": "arch_craft",
     "device": ["0"],
-    "seed": [1993]
+    "seed": [1993, 1994, 1995, 1996, 1997]
 }

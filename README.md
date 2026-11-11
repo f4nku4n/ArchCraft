@@ -24,24 +24,35 @@
 > Efforts to overcome catastrophic forgetting have primarily centered around developing more effective Continual Learning (CL) methods. In contrast, less attention was devoted to analyzing the role of network architecture design (e.g., network depth, width, and components) in contributing to CL. This paper seeks to bridge this gap between network architecture design and CL, and to present a holistic study on the impact of network architectures on CL. This work considers architecture design at the network scaling level, i.e., width and depth, and also at the network components, i.e., skip connections, global pooling layers, and down-sampling. In both cases, we first derive insights through systematically exploring how architectural designs affect CL. Then, grounded in these insights, we craft a specialized search space for CL and further propose a simple yet effective ArchCraft method to steer a CL-friendly architecture, namely, this method recrafts AlexNet/ResNet into AlexAC/ResAC. Experimental validation across various CL settings and scenarios demonstrates that improved architectures are parameter-efficient, achieving state-of-the-art performance of CL while being 86%, 61%, and 97% more compact in terms of parameters than the naive CL architecture in Task IL and Class IL. 
 
 ## Information before using this repo
-I changed all the paths to prevent possible information leakage.
-In order to run the code, you will need to configure the paths to match your own system (see class_il/utils/data.py and task_il/dataloaders).
+ImageNet-100 experiments require a dataset root with `train/` and `val/` folders containing the same 100 class directories. Supply the subset you intend to evaluate with `--data-root`. For Class IL you can also set `data_root` in the JSON config. CIFAR-100 uses the existing automatic download.
 
-If there are any questions, please feel free to open an issue or contact with the author: **Aojun Lu** ([aojunlu@stu.scu.edu.cn](mailto:aojunlu@stu.scu.edu.cn))
-
-⭐⭐⭐Consider starring the repo! ⭐⭐⭐
+If there are any questions, please feel free to open an issue or contact the author, **Aojun Lu** ([aojunlu@stu.scu.edu.cn](mailto:aojunlu@stu.scu.edu.cn)).
 
 ## How to Use
-**First, select a continual learning scenario you are interested in. And then:**
 
-**To evaluate the performance of a given architecture:**
+Run commands from the corresponding scenario directory.
 
-Run test.py
+**Task IL**
 
-**To design a new architecture using ArchCraft:**
+```sh
+cd task_il
+python test.py --architecture alexac-a --increment 5
+python test.py --architecture alexnet --dataset imagenet100 --data-root /path/to/imagenet100 --increment 10
+```
 
-Make sure the value of 'is_running' in global.ini is 0, unless you want to continue the previous search process that was interrupted. 
-Then run evolve.py
+**Class IL**
+
+```sh
+cd class_il
+python test.py --config exps/replay.json --architecture resac-b --increment 5
+python test.py --config exps/foster.json --architecture resnet18 --dataset imagenet100 --data-root /path/to/imagenet100 --increment 10
+```
+
+The paper experiment configurations run five seeds and report LA and AIA as mean ± standard deviation. The default seed list is 1993–1997. Use `--seeds 1993` for a single run.
+
+**Architecture search**
+
+Run `python evolve.py` from either scenario directory. The search evaluates an initial population of 10, then runs 20 generations using mean AIA as fitness. Start a fresh run with `is_running = 0` in `global.ini`. Resume only from population files generated with the same search settings. Use a clean `populations/` directory for a new search protocol.
 
 ## Citation
 If you find this repo useful, please consider citing our paper.

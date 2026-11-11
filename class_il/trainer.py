@@ -13,13 +13,17 @@ import numpy as np
 def train(args, file_id):
     seed_list = copy.deepcopy(args["seed"])
     device = copy.deepcopy(args["device"])
-    aia=0.0
+    results = []
 
     for seed in seed_list:
-        args["seed"] = seed
-        args["device"] = device
-        aia = _train(args, file_id)
-    return aia
+        run_args = dict(args, seed=seed, device=device)
+        la, aia = _train(run_args, f'{file_id}-seed{seed}')
+        results.append((la, aia))
+        print(f'Seed {seed}: LA={la:.3f}%, AIA={aia:.3f}%')
+
+    for metric, values in zip(('LA', 'AIA'), np.asarray(results).T):
+        print(f'{metric} over {len(values)} runs: {np.mean(values):.3f} ± {np.std(values):.3f}%')
+    return float(np.mean([aia for _, aia in results]))
 
 
 def _train(args, file_id):
@@ -34,13 +38,14 @@ def _train(args, file_id):
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(filename)s] => %(message)s",
+        force=True,
         handlers=[
-            logging.FileHandler(filename=logfilename),
+            logging.FileHandler(filename=logfilename, encoding='utf-8'),
             logging.StreamHandler(sys.stdout),
         ],
     )
 
-    _set_random()
+    _set_random(args["seed"])
     _set_device(args)
     print_args(args)
     data_manager = DataManager(
@@ -49,6 +54,7 @@ def _train(args, file_id):
         args["seed"],
         args["init_cls"],
         args["increment"],
+        data_root=args.get("data_root"),
     )
     model = factory.get_model(args["model_name"], args)
 
@@ -110,11 +116,6 @@ def _train(args, file_id):
             print('Average Accuracy (CNN):', sum(cnn_curve["top1"])/len(cnn_curve["top1"]))
             logging.info("Average Accuracy (CNN): {} \n".format(sum(cnn_curve["top1"])/len(cnn_curve["top1"])))
 
-        class_count = args["init_cls"] + task*args["increment"]
-        if args["dataset"] == 'imagenet100':
-            if class_count >= 100:
-                break
-
     if len(cnn_matrix) > 0:
         np_acctable = np.zeros([task + 1, task + 1])
         for idxx, line in enumerate(cnn_matrix):
@@ -136,7 +137,8 @@ def _train(args, file_id):
         print(np_acctable)
         logging.info('Forgetting (NME): {}'.format(forgetting))
 
-    return float(sum(cnn_curve["top1"])/len(cnn_curve["top1"]))
+    top1 = cnn_curve["top1"]
+    return top1[-1], float(np.mean(top1))
 
     
 def _set_device(args):
@@ -154,10 +156,11 @@ def _set_device(args):
     args["device"] = gpus
 
 
-def _set_random():
-    torch.manual_seed(1)
-    torch.cuda.manual_seed(1)
-    torch.cuda.manual_seed_all(1)
+def _set_random(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 

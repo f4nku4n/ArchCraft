@@ -7,9 +7,9 @@ from utils.data import iCIFAR10, iCIFAR100, iImageNet100, iImageNet1000
 from tqdm import tqdm
 
 class DataManager(object):
-    def __init__(self, dataset_name, shuffle, seed, init_cls, increment):
+    def __init__(self, dataset_name, shuffle, seed, init_cls, increment, data_root=None):
         self.dataset_name = dataset_name
-        self._setup_data(dataset_name, shuffle, seed)
+        self._setup_data(dataset_name, shuffle, seed, data_root)
         assert init_cls <= len(self._class_order), "No enough classes."
         self._increments = [init_cls]
         while sum(self._increments) + increment < len(self._class_order):
@@ -183,8 +183,8 @@ class DataManager(object):
             train_data, train_targets, trsf, self.use_path
         ), DummyDataset(val_data, val_targets, trsf, self.use_path)
 
-    def _setup_data(self, dataset_name, shuffle, seed):
-        idata = _get_idata(dataset_name)
+    def _setup_data(self, dataset_name, shuffle, seed, data_root):
+        idata = _get_idata(dataset_name, data_root)
         idata.download_data()
 
         # Data
@@ -200,8 +200,7 @@ class DataManager(object):
         # Order
         order = [i for i in range(len(np.unique(self._train_targets)))]
         if shuffle:
-            np.random.seed(seed)
-            order = np.random.permutation(len(order)).tolist()
+            order = np.random.RandomState(seed).permutation(len(order)).tolist()
         else:
             order = idata.class_order
         self._class_order = order
@@ -267,7 +266,7 @@ def _map_new_class_index(y, order):
     return np.array(list(map(lambda x: order.index(x), y)))
 
 
-def _get_idata(dataset_name):
+def _get_idata(dataset_name, data_root=None):
     name = dataset_name.lower()
     if name == "cifar10":
         return iCIFAR10()
@@ -276,7 +275,7 @@ def _get_idata(dataset_name):
     elif name == "imagenet1000":
         return iImageNet1000()
     elif name == "imagenet100":
-        return iImageNet100()
+        return iImageNet100(data_root)
     else:
         raise NotImplementedError("Unknown dataset {}.".format(dataset_name))
 
