@@ -1,12 +1,10 @@
 """
 import json
 import argparse
-import os
-import sys
-import multiprocessing
 from datetime import datetime
+
+import torch
 from trainer import train
-from evo_utils import StatusUpdateTool
 
 #generated_code
 
@@ -30,7 +28,7 @@ class TrainModel(object):
         self.file_id = file_id
         self.gpu_id = gpu_id
 
-    def process(self):
+    def process(self, data_lock):
         args = setup_parser().parse_args()
         param = load_json(args.config)
         args = vars(args)  # Converting argparse Namespace to a dict.
@@ -41,10 +39,7 @@ class TrainModel(object):
         args['width'] = self.code[1]
         args['pool'] = self.code[2]
         args['double'] = self.code[3]
-        aia = 0.0
-        
-        aia = train(args, self.file_id)
-        return round(aia,3)
+        return train(args, self.file_id, data_lock=data_lock)
 
 
     def log_record(self, _str, first_time=None):
@@ -60,22 +55,10 @@ class TrainModel(object):
         f.close()
 
 
-class RunModel(object):
-    def do_work(self, gpu_id, file_id):
-        final_aia = 0.0
-        m = TrainModel(gpu_id, file_id)
-        try:
-            m.log_record('Used GPU#%s, worker name:%s[%d]'%(gpu_id, multiprocessing.current_process().name, os.getpid()), first_time=True)
-            final_aia = m.process()
-        except BaseException as e:
-            print('Exception occurs, file:%s, pid:%d...%s'%(file_id, os.getpid(), str(e)))
-            m.log_record('Exception occur:%s'%(str(e)))
-        finally:
-            m.log_record('Finished-AIA (CNN): %.4f'%final_aia)
-
-            f = open('./populations/after_%s.txt'%(file_id[4:6]), 'a+')
-            f.write('%s=%.5f\n'%(file_id, final_aia))
-            f.flush()
-            f.close()
-
- """           
+class RunModel:
+    def do_work(self, gpu_id, file_id, data_lock):
+        torch.cuda.set_device(gpu_id)
+        model = TrainModel(gpu_id, file_id)
+        model.log_record(f'Using CUDA GPU {gpu_id}', first_time=True)
+        return model.process(data_lock)
+"""

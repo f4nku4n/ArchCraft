@@ -1,8 +1,7 @@
 import random
-import time
 
-from evo_utils import StatusUpdateTool, Utils, Log
-from genetic.population import Population, Individual
+from evo_utils import Log
+from genetic.population import Population
 from genetic.evaluate import FitnessEvaluate
 from genetic.mutation import Mutation
 import numpy as np
@@ -20,24 +19,15 @@ class EvolveCNN(object):
         self.parent_pops = None
         self.params = params
         self.pops = None
+        self.fitness_cache = {}
 
     def initialize_population(self):
-        StatusUpdateTool.begin_evolution()
         pops = Population(self.params, 0)
         pops.initialize()
         self.pops = pops
-        Utils.save_population_at_begin(str(pops), 0)
 
-    # type==0 means 0-th
-    def fitness_evaluate(self):
-        fitness = FitnessEvaluate(self.pops.individuals, Log)
-        fitness.generate_to_python_file()
-        
-        # for indi in self.pops.individuals:
-        #     indi.acc = indi.code[1]/indi.code[0]
-        # return None
-        
-        fitness.evaluate()
+    def fitness_evaluate(self, gpu_ids):
+        FitnessEvaluate(self.pops.individuals, Log, gpu_ids, self.fitness_cache).evaluate()
 
     def generate_offspring(self):
         cm = Mutation(Log,self.pops.individuals, _params={'gen_no': self.pops.gen_no})
@@ -84,50 +74,26 @@ class EvolveCNN(object):
         next_gen_pops.create_from_offspring(next_individuals)
         self.pops = next_gen_pops
 
-        Utils.save_population_at_begin(str(self.pops), self.pops.gen_no)
         self.pops.gen_no += 1
 
     def do_work(self, params):
-        max_gen = params['max_gen']
-        Log.info('*'*25)
-        # the step 1
-        if StatusUpdateTool.is_evolution_running():
-            Log.info('Initialize from existing population data')
-            gen_no = Utils.get_newest_file_based_on_prefix('begin')
-            if gen_no is not None:
-                Log.info('Initialize from %d-th generation'%(gen_no))
-                pops = Utils.load_population(prefix='begin', gen_no=gen_no, params=params)
-                self.pops = pops
-            else:
-                raise ValueError('The running flag is set to be running, but there is no generated population stored')
-        else:
-            gen_no = 0
-            Log.info('Initialize...')
-            self.initialize_population()
+        gpu_ids = FitnessEvaluate.visible_gpu_ids()
+        self.fitness_cache.clear()
+        Log.info(f'Starting a new search on CUDA GPUs {gpu_ids}')
+        self.initialize_population()
 
-        Log.info('EVOLVE[%d-gen]-Begin to evaluate the fitness'%(gen_no))
-        self.fitness_evaluate()
-        Log.info('EVOLVE[%d-gen]-Finish the evaluation'%(gen_no))
-        gen_no += 1
+        Log.info('Evaluating the initial population')
+        self.fitness_evaluate(gpu_ids)
         self.pops.gen_no += 1
-        for curr_gen in range(gen_no, max_gen + 1):
-            self.params['gen_no'] = curr_gen
-            #step 3
-            Log.info('EVOLVE[%d-gen]-Begin to crossover and mutation'%(curr_gen))
+        for generation in range(1, params['max_gen'] + 1):
+            self.params['gen_no'] = generation
+            Log.info(f'Generation {generation}: mutating the population and evaluating offspring')
             self.generate_offspring()
-            Log.info('EVOLVE[%d-gen]-Finish crossover and mutation'%(curr_gen))
-
-            Log.info('EVOLVE[%d-gen]-Begin to evaluate the fitness'%(curr_gen))
-            self.fitness_evaluate()
-            Log.info('EVOLVE[%d-gen]-Finish the evaluation'%(curr_gen))
-            time.sleep(30)
+            self.fitness_evaluate(gpu_ids)
             self.environment_selection()
-            Log.info('EVOLVE[%d-gen]-Finish the environment selection'%(curr_gen))
 
         best = max(self.pops.individuals, key=lambda individual: individual.acc)
         Log.info('Best architecture: %s' % best)
-
-        StatusUpdateTool.end_evolution()
 
 
 if __name__ == '__main__':

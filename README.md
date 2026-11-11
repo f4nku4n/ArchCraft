@@ -52,7 +52,9 @@ The paper experiment configurations run five seeds and report LA and AIA as mean
 
 **Architecture search**
 
-Run `python evolve.py` from either scenario directory. The search evaluates an initial population of 10, then runs 20 generations using mean AIA as fitness. Start a fresh run with `is_running = 0` in `global.ini`. Resume only from population files generated with the same search settings. Use a clean `populations/` directory for a new search protocol.
+Run `python evolve.py` from either scenario directory. Each invocation starts with a new population of 10, then runs 20 generations using mean AIA as fitness.
+
+The search schedules one ArchCraft worker per visible CUDA GPU, including GPUs already used by other applications. Set `CUDA_VISIBLE_DEVICES` before launching to limit the devices used by the search.
 
 ## Citation
 If you find this repo useful, please consider citing our paper.

@@ -1,17 +1,13 @@
 """
 from __future__ import print_function
 import os
-import sys
 from datetime import datetime
-import multiprocessing
 import numpy as np
+import torch
 import dataloaders.cifar100 as dataloader
 from networks.arch_craft import Net
-from model_code import init_code
 from approaches import sgd as approach
-import utils
 import copy
-from evo_utils import StatusUpdateTool
 
 Inc_cls = 5    # Number of classes incremented at each step
 
@@ -37,12 +33,13 @@ class TrainModel(object):
         f.flush()
         f.close()
 
-    def process(self, s):
+    def process(self, s, data_lock):
         depth = self.code[0]
         width = self.code[1]
         pool_code = copy.deepcopy(self.code[2])
         double_code = copy.deepcopy(self.code[3])
-        data, taskcla, inputsize=dataloader.get(seed=s,pc_valid=0,inc=self.inc)
+        with data_lock:
+            data, taskcla, _ = dataloader.get(seed=s, inc=self.inc)
         approach.set_random(s)
         net = Net(taskcla, depth, width, pool_code, double_code)
         net = net.cuda()
@@ -128,29 +125,16 @@ class TrainModel(object):
         self.log_record('Done!')
         return aia
 
-class RunModel(object):
-    def do_work(self, gpu_id, file_id):
-        os.environ['CUDA_VISIBLE_DEVICES'] = gpu_id
-        best_acc = 0.0
-        m = TrainModel()
-        try:
-            m.log_record('Used GPU#%s, worker name:%s[%d]'%(gpu_id, multiprocessing.current_process().name, os.getpid()), first_time=True)
-            scores = []
-            for seed in approach.DEFAULT_SEEDS:
-                m.log_record(f'Seed: {seed}')
-                scores.append(m.process(seed))
-            best_acc = float(np.mean(scores))
-            m.log_record(f'AIA over {len(scores)} runs: {best_acc:.3f} ± {np.std(scores):.3f}%')
-        except BaseException as e:
-            print('Exception occurs, file:%s, pid:%d...%s'%(file_id, os.getpid(), str(e)))
-            m.log_record('Exception occur:%s'%(str(e)))
-        finally:
-            m.log_record('Finished-Acc:%.4f'%best_acc)
-
-            f = open('./populations/after_%s.txt'%(file_id[4:6]), 'a+')
-            f.write('%s=%.5f\n'%(file_id, best_acc))
-            f.flush()
-            f.close()
+class RunModel:
+    def do_work(self, gpu_id, file_id, data_lock):
+        torch.cuda.set_device(gpu_id)
+        model = TrainModel()
+        model.log_record(f'Using CUDA GPU {gpu_id}', first_time=True)
+        scores = []
+        for seed in approach.DEFAULT_SEEDS:
+            model.log_record(f'Seed: {seed}')
+            scores.append(model.process(seed, data_lock))
+        mean_aia = float(np.mean(scores))
+        model.log_record(f'AIA over {len(scores)} runs: {mean_aia:.3f} ± {np.std(scores):.3f}%')
+        return mean_aia
 """
-
-

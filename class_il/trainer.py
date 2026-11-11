@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 import sys
 import logging
 import copy
@@ -10,14 +11,14 @@ import random
 import numpy as np
 
 
-def train(args, file_id):
+def train(args, file_id, data_lock=None):
     seed_list = copy.deepcopy(args["seed"])
     device = copy.deepcopy(args["device"])
     results = []
 
     for seed in seed_list:
         run_args = dict(args, seed=seed, device=device)
-        la, aia = _train(run_args, f'{file_id}-seed{seed}')
+        la, aia = _train(run_args, f'{file_id}-seed{seed}', data_lock)
         results.append((la, aia))
         print(f'Seed {seed}: LA={la:.3f}%, AIA={aia:.3f}%')
 
@@ -26,7 +27,7 @@ def train(args, file_id):
     return float(np.mean([aia for _, aia in results]))
 
 
-def _train(args, file_id):
+def _train(args, file_id, data_lock):
 
     # init_cls = 0 if args ["init_cls"] == args["increment"] else args["init_cls"]
     # logs_name = "logs/{}/{}/{}/{}".format(args["model_name"],args["dataset"], init_cls, args['increment'])
@@ -48,14 +49,15 @@ def _train(args, file_id):
     _set_random(args["seed"])
     _set_device(args)
     print_args(args)
-    data_manager = DataManager(
-        args["dataset"],
-        args["shuffle"],
-        args["seed"],
-        args["init_cls"],
-        args["increment"],
-        data_root=args.get("data_root"),
-    )
+    with data_lock if data_lock is not None else nullcontext():
+        data_manager = DataManager(
+            args["dataset"],
+            args["shuffle"],
+            args["seed"],
+            args["init_cls"],
+            args["increment"],
+            data_root=args.get("data_root"),
+        )
     model = factory.get_model(args["model_name"], args)
 
     cnn_curve, nme_curve = {"top1": [], "top5": []}, {"top1": [], "top5": []}
